@@ -1,0 +1,67 @@
+# ==============================================================================
+# Bioinformatics .gitignore — keep heavy/derived data out of the repo.
+# ==============================================================================
+
+# Sequencing / alignment data
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+*.sam
+
+# Variant data
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.vcf.gz.csi
+*.gvcf
+*.gvcf.gz
+*.gvcf.gz.tbi
+
+# Reference / index files
+*.fa
+*.fasta
+*.fa.fai
+*.fasta.fai
+*.dict
+*.bwt*
+*.pac
+*.ann
+*.amb
+*.sa
+*.0123
+*.bwt.2bit.64
+*.sdf/
+
+# Intermediate / log
+work/
+tmp/
+logs/
+*.log
+*.metrics.txt
+
+# Result artifacts that should be regenerated, not committed
+results/*.tsv
+results/*.png
+results/*.pdf
+!results/README.md
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.env
+
+# Conda
+.conda/

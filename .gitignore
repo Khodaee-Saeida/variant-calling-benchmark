@@ -1,4 +1,31 @@
-# ==============================================================================
+# Local config — copy from config.example.sh
+config/config.sh
+
+# Pipeline outputs
+work/
+vcfs/
+happy_out/
+*.bam
+*.bai
+*.vcf.gz
+*.vcf.gz.tbi
+
+# RTG and bwa-mem2 indexes (large)
+*.sdf/
+*.bwt.2bit.64
+*.0123
+*.fai
+*.dict
+
+# Conda
+.conda/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+__pycache__/
+*.pyc# ==============================================================================
 # Bioinformatics .gitignore — keep heavy/derived data out of the repo.
 # ==============================================================================
 

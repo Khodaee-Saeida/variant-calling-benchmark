@@ -1,9 +1,7 @@
 # Conda environment for the WES variant-calling benchmark.
 # Create with:   conda env create -f environment.yml
 # Activate with: conda activate vcbench
-#
-# DeepVariant and Strelka2 are best run from their official containers (Singularity
-# or Docker) — they are not installed via conda here. See scripts/05 and 06.
+
 
 name: vcbench
 channels:

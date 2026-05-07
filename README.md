@@ -6,7 +6,7 @@ The goal is to produce a transparent, reproducible benchmark that quantifies the
 
 ---
 
-##  Results
+## TL;DR — Results
 
 Benchmark of HG001 against GIAB v4.2.1 truth, restricted to the AgilentV5 × GIAB high-confidence evaluable region (~46.7 Mb).
 
@@ -200,4 +200,3 @@ If you use this pipeline, please cite the underlying tools:
 ## License
 
 MIT
- 

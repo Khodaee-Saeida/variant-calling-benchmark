@@ -1,12 +1,12 @@
 # Germline Variant Calling Benchmark on GIAB HG001 (Exome)
 
-End-to-end pipeline for short-read germline variant calling and benchmarking against the Genome in a Bottle (GIAB) HG001 truth set, with a side-by-side comparison of four widely used callers: **GATK HaplotypeCaller**, **Strelka2**, **bcftools**, and **FreeBayes**.
+The pipeline for short-read germline variant calling and benchmarking against the Genome in a Bottle (GIAB) HG001 truth set, with a side-by-side comparison of four widely used callers: **GATK HaplotypeCaller**, **Strelka2**, **bcftools**, and **FreeBayes**.
 
 The goal is to produce a transparent, reproducible benchmark that quantifies the precision/recall tradeoffs between these callers on real exome data.
 
 ---
 
-## TL;DR — Results
+## Results
 
 Benchmark of HG001 against GIAB v4.2.1 truth, restricted to the AgilentV5 × GIAB high-confidence evaluable region (~46.7 Mb).
 
@@ -137,8 +137,8 @@ YAML specs are in `envs/`.
 Clone, install conda envs, then run scripts in order:
 
 ```bash
-git clone https://github.com/<you>/<repo>.git
-cd <repo>
+git clone https://github.com/Khodaee-Saeida/variant-calling-benchmark.git
+cd variant-calling-benchmark
 
 # 1. Create envs (one-time, ~20 min)
 for f in envs/*.yml; do conda env create -f "$f"; done
@@ -179,7 +179,7 @@ For a quick sanity check (no full-genome run), `scripts/smoke_test_chr22.sh` run
 
 **Why hap.py + vcfeval.** `hap.py` is the GA4GH-recommended benchmarking tool. Using `--engine=vcfeval` (RTG's haplotype-aware comparison) handles complex variant representations correctly, avoiding the false discrepancies that simple position-based comparison would produce.
 
-**Why default GATK filters.** The GATK Best Practices hard-filter thresholds were originally tuned on WGS data. They are over-aggressive on exome capture data, particularly the `MQ < 40` and `ReadPosRankSum < -8` filters, because bait-edge reads frequently have marginal mapping quality. This benchmark uses the default Best Practices thresholds unchanged for reproducibility; tuning them for exome data closes most of the SNP recall gap (see `docs/gatk_filter_diagnostic.md` for details).
+**Why default GATK filters.** The GATK Best Practices hard-filter thresholds were originally tuned on WGS data. They are over-aggressive on exome capture data, particularly the `MQ < 40` and `ReadPosRankSum < -8` filters, because bait-edge reads frequently have marginal mapping quality. This benchmark uses the default Best Practices thresholds unchanged for reproducibility; tuning them for exome data closes most of the SNP recall gap.
 
 ---
 

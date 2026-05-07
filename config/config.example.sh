@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# config.sh — template configuration for the variant-calling benchmark
+# config.example.sh — template configuration for the variant-calling benchmark
 # ------------------------------------------------------------------------------
 # Setup:
-#   Edit config/config.sh with your real paths
+#   1. cp config/config.example.sh config/config.sh
+#   2. Edit config/config.sh with your real paths
+#   3. config/config.sh is gitignored, so your local paths stay local
 # ==============================================================================
 
 # ---- Sample identity --------------------------------------------------------

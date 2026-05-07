@@ -30,13 +30,20 @@
 set -euo pipefail
 
 # ---- Configuration (edit for your setup) -----------------------------------
-SM="HG001"
-REF="/GRCh38_GIAB_noalt_masked.fa"
-FASTQ_DIR="/HG001_fastq"
-OUTDIR="/work/${SM}"
-
-THREADS_ALIGN=16
-THREADS_SORT=8
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/../config/config.sh" ]]; then
+    source "${SCRIPT_DIR}/../config/config.sh"
+fi
+: "${SM:=HG001}"
+: "${REF:=/mnt/vdb/WES_PPMI/benchmark/references/GRCh38_GIAB_noalt_masked.fa}"
+: "${OUTDIR:=/mnt/vdb/WES_PPMI/benchmark/work/${SM}}"
+: "${CAPTURE_BED:=/mnt/vdb/variants_benchmark/AgilentV5_GRCh38.bed}"
+: "${THREADS_SORT:=8}"
+if ! declare -F require_file >/dev/null; then
+    require_file() {
+        [[ -f "$1" ]] || { echo "[ERROR] required file missing: $1" >&2; exit 1; }
+    }
+fi
 
 # ----------------------------------------------------------------------------
 

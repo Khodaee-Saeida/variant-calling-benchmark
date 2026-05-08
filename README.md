@@ -1,6 +1,6 @@
 # Germline Variant Calling Benchmark on GIAB HG001 (Exome)
 
-The pipeline for short-read germline variant calling and benchmarking against the Genome in a Bottle (GIAB) HG001 truth set, with a side-by-side comparison of four widely used callers: **GATK HaplotypeCaller**, **Strelka2**, **bcftools**, and **FreeBayes**.
+End-to-end pipeline for short-read germline variant calling and benchmarking against the Genome in a Bottle (GIAB) HG001 truth set, with a side-by-side comparison of four widely used callers: **GATK HaplotypeCaller**, **Strelka2**, **bcftools**, and **FreeBayes**.
 
 The goal is to produce a transparent, reproducible benchmark that quantifies the precision/recall tradeoffs between these callers on real exome data.
 
@@ -17,7 +17,6 @@ Benchmark of HG001 against GIAB v4.2.1 truth, restricted to the AgilentV5 × GIA
 | bcftools   | 0.8999     | 0.8257     | **0.9887**    | 0.6672     | 0.5883       | 0.7706          |
 | GATK       | 0.8541     | 0.7631     | 0.9696        | **0.7434** | **0.7264**   | 0.7613          |
 
-![Benchmark comparison](docs/benchmark_comparison.png)
 
 **Key findings**
 
@@ -49,43 +48,30 @@ Benchmark of HG001 against GIAB v4.2.1 truth, restricted to the AgilentV5 × GIA
 
 ## Pipeline Overview
 
-```
-   FASTQ (HG001 Garvan exome)
-            │
-            ▼
-   bwa-mem2 alignment to GRCh38_GIAB_noalt_masked
-            │
-            ▼
-   Picard MarkDuplicates
-            │
-            ▼
-   Picard ValidateSamFile  ─── BAM sanity check
-            │
-            ▼
-   ┌────────┴────────────────────────────────┐
-   │                                         │
-   ▼              ▼              ▼           ▼
- GATK4         Strelka2       bcftools    FreeBayes
-HaplotypeCaller germline      mpileup
- + GenotypeGVCFs                + call
- + VariantFiltration
-   │              │              │           │
-   └────────┬─────┴──────┬───────┴─────┬─────┘
-            ▼            ▼             ▼
-         bcftools norm (left-align, decompose multi-allelics)
-                         │
-                         ▼
-              bcftools view -f PASS,.
-                         │
-                         ▼
-            hap.py + RTG vcfeval (vs. GIAB v4.2.1)
-                         │
-                         ▼
-                  per-caller summary.csv
-                         │
-                         ▼
-                 all_callers_summary.csv
-```
+The pipeline runs in six stages, each implemented by one numbered script in `scripts/`.
+
+**Step 1 — Alignment** (`01_align_bwa.sh`)
+Per-lane bwa-mem2 alignment of the Garvan HG001 exome FASTQs to `GRCh38_GIAB_noalt_masked`, with read groups built from FASTQ header (FLOWCELL.LANE) and filename (BARCODE). Lanes are sorted, merged, and deduped with Picard MarkDuplicates to produce a single analysis-ready BAM.
+
+**Step 2 — BAM validation** (`02_validate_bam.sh`)
+Nine-section QC pass on the BAM: file integrity (`samtools quickcheck`), index, sort order, reference compatibility (`@SQ` vs reference `.fai`), Picard `ValidateSamFile`, read-group sanity (ID/SM/LB/PL/PU populated), `flagstat` thresholds, `samtools stats`, and on-target depth across the AgilentV5 capture. Hard-fails on anything that would silently corrupt downstream calling.
+
+**Step 3 — Prepare inputs** (`03_prepare_inputs.sh`)
+One-time setup of reference and target files: post-process the raw Agilent V5 BED (`S04380110_Covered.bed` → `AgilentV5_GRCh38.bed`), download the GIAB v4.2.1 truth VCF + high-confidence BED, build the evaluable region (capture × GIAB-HC), and pre-format the reference as an RTG SDF for `vcfeval`.
+
+**Step 4 — Variant calling**
+Four callers run on the same analysis-ready BAM, restricted to the AgilentV5 capture region. Either run them individually or via the wrapper `run_all_callers.sh`, which times each call and writes a summary table.
+
+- **GATK4 HaplotypeCaller** (`04_call_gatk.sh`) — `HaplotypeCaller -ERC GVCF` → `GenotypeGVCFs` → split SNP/INDEL → `VariantFiltration` with Best Practices hard filters → merged final VCF.
+- **Strelka2 germline** (`06_call_strelka2.sh`) — `configureStrelkaGermlineWorkflow.py --exome` followed by `runWorkflow.py`, with a bgzipped + tabixed call-regions BED.
+- **bcftools** (`07_call_bcftools.sh`) — single piped `bcftools mpileup | call -m | norm | filter` chain, soft-filtering `QUAL<20 || INFO/DP<10` as `LowQual`.
+- **FreeBayes** (`08_call_freebayes.sh`) — `freebayes-parallel` with the capture region split into per-interval chunks, then bcftools normalization and a `QUAL<20` `LowQual` filter.
+
+**Step 5 — Prepare VCFs for benchmarking** (`09_prepare_vcfs.sh`)
+Per-caller `bcftools norm -m -any --check-ref s` (left-align, decompose multi-allelics, fix REF mismatches), then `bcftools view -f PASS,.`, then sample-name + reference-contig + variant-count sanity checks. Builds the evaluable-region BED if not already present. Produces `${SM}.<caller>.pass.vcf.gz` ready to feed hap.py.
+
+**Step 6 — Benchmark** (`10_run_happy_benchmark.sh`)
+`hap.py --engine=vcfeval` per caller against the GIAB v4.2.1 truth set, restricted to the evaluable region. Aggregates the four per-caller `summary.csv` files into a single `all_callers_summary.csv`. The companion `plot_benchmark.py` turns that table into the figure at the top of this README.
 
 ---
 
@@ -104,98 +90,58 @@ YAML specs are in `envs/`.
 
 ---
 
-## Repository Structure
-
-```
-.
-├── README.md                       <- this file
-├── envs/                           <- conda env YAMLs
-├── config/
-│   └── config.sh                   <- centralized paths + parameters
-├── scripts/
-│   ├── 01_align_bwa.sh             <- bwa-mem2 alignment + sort
-│   ├── 02_markdup_validate.sh      <- Picard MarkDuplicates + ValidateSamFile
-│   ├── 03_prepare_inputs.sh        <- target BED + truth + reference + RTG SDF
-│   ├── 04_call_gatk.sh             <- GATK HaplotypeCaller + filtering
-│   ├── 06_call_strelka2.sh         <- Strelka2 germline workflow
-│   ├── 07_call_bcftools.sh         <- bcftools mpileup + call
-│   ├── 08_call_freebayes.sh        <- FreeBayes
-│   ├── 09_run_happy_benchmark.sh   <- hap.py benchmarking + summary
-│   ├── plot_benchmark.py           <- generates docs/benchmark_comparison.png
-│   └── smoke_test_chr22.sh         <- chr22-only smoke test
-├── results/
-│   ├── all_callers_summary.csv     <- aggregated benchmark
-│   └── per_caller/                 <- raw hap.py outputs
-└── docs/
-    └── benchmark_comparison.png    <- summary figure
-```
-
----
 
 ## How to Reproduce
 
-Clone, install conda envs, then run scripts in order:
+### Setup (one-time)
 
 ```bash
+# Clone the repo
 git clone https://github.com/Khodaee-Saeida/variant-calling-benchmark.git
 cd variant-calling-benchmark
 
-# 1. Create envs (one-time, ~20 min)
+# Create conda envs (one-time, ~20 min)
 for f in envs/*.yml; do conda env create -f "$f"; done
 
-# 2. Edit config/config.sh with your paths
-$EDITOR config/config.sh
-
-# 3. Run the pipeline
-conda activate variant_benchmark
-bash scripts/01_align_bwa.sh
-conda activate picard
-bash scripts/02_markdup_validate.sh
-
-bash scripts/03_prepare_inputs.sh        # target BED, truth, RTG SDF
-bash scripts/04_call_gatk.sh             # ~1 hr exome
-conda activate strelka
-bash scripts/06_call_strelka2.sh
-conda activate variant_benchmark
-bash scripts/07_call_bcftools.sh
-bash scripts/08_call_freebayes.sh
-
-# 4. Benchmark
-bash scripts/09_run_happy_benchmark.sh   # auto-handles env switching
-
-# 5. Plot
-python scripts/plot_benchmark.py
+# Create your local config from the template
+cp config/config.example.sh config/config.sh
+$EDITOR config/config.sh    # fill in REF, PROJECT_DIR, RAW_AGILENT_BED
 ```
 
-For a quick sanity check (no full-genome run), `scripts/smoke_test_chr22.sh` runs all four callers on chr22 only (~30 min total wall time).
+`config/config.sh` is gitignored, so your real paths stay local. Every script reads from it.
 
----
+### Run the pipeline
 
-## Notes on Methodology
+Each script switches to the conda env it needs automatically — no manual `conda activate` between steps.
 
-**Why pre-normalize.** The four callers represent the same indel/MNP differently. `bcftools norm -f $REF -m -any` left-aligns indels and splits multi-allelics, giving consistent representation before benchmarking. `vcfeval` (used inside hap.py) handles a lot of this internally, but pre-normalizing reduces edge cases and makes downstream `bcftools` queries reproducible.
+```bash
+# Step 1 — alignment + MarkDuplicates
+bash scripts/01_align_bwa.sh
 
-**Why restrict to the evaluable region.** The GIAB v4.2.1 truth set is highly accurate, but only inside its declared "high-confidence" regions. Variants called outside these regions can't be classified TP/FP/FN reliably. Intersecting with the AgilentV5 capture restricts the comparison to ~46.7 Mb where (a) we expect to call variants and (b) the truth is trustworthy.
+# Step 2 — BAM QC (hard-fails if anything would corrupt downstream calling)
+bash scripts/02_validate_bam.sh
 
-**Why hap.py + vcfeval.** `hap.py` is the GA4GH-recommended benchmarking tool. Using `--engine=vcfeval` (RTG's haplotype-aware comparison) handles complex variant representations correctly, avoiding the false discrepancies that simple position-based comparison would produce.
+# Step 3 — one-time: capture BED, GIAB truth, RTG SDF
+bash scripts/03_prepare_inputs.sh
 
-**Why default GATK filters.** The GATK Best Practices hard-filter thresholds were originally tuned on WGS data. They are over-aggressive on exome capture data, particularly the `MQ < 40` and `ReadPosRankSum < -8` filters, because bait-edge reads frequently have marginal mapping quality. This benchmark uses the default Best Practices thresholds unchanged for reproducibility; tuning them for exome data closes most of the SNP recall gap.
+# Step 4 — variant calling (run all four, with timing summary)
+bash scripts/run_all_callers.sh
 
----
+# ...or individually:
+#   bash scripts/04_call_gatk.sh
+#   bash scripts/06_call_strelka2.sh
+#   bash scripts/07_call_bcftools.sh
+#   bash scripts/08_call_freebayes.sh
 
-## Citation
+# Step 5 — normalize + PASS-filter all caller VCFs, build evaluable region
+bash scripts/09_prepare_vcfs.sh
 
-If you use this pipeline, please cite the underlying tools:
+# Step 6 — hap.py benchmark + aggregated summary CSV
+bash scripts/10_run_happy_benchmark.sh
 
-- **bwa-mem2**: Vasimuddin et al., IPDPS 2019
-- **GATK4**: Van der Auwera & O'Connor, *Genomics in the Cloud*, O'Reilly 2020
-- **Strelka2**: Kim et al., Nat Methods 2018
-- **bcftools**: Danecek et al., GigaScience 2021
-- **FreeBayes**: Garrison & Marth, arXiv 2012
-- **hap.py / vcfeval**: Krusche et al., Nat Biotech 2019
-- **GIAB HG001**: Zook et al., Sci Data 2016
-
----
+# Step 7 — generate the comparison figure
+python scripts/plot_benchmark.py results/all_callers_summary.csv docs/
+```
 
 ## License
 

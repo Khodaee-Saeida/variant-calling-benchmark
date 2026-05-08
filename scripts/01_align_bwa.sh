@@ -29,21 +29,36 @@
 # ==============================================================================
 set -euo pipefail
 
-# ---- Configuration (edit for your setup) -----------------------------------
+# ---- Configuration ---------------------------------------------------------
+# All paths and parameters come from config/config.sh, which is gitignored.
+# To set up:
+#   cp config/config.example.sh config/config.sh
+#   $EDITOR config/config.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "${SCRIPT_DIR}/../config/config.sh" ]]; then
-    source "${SCRIPT_DIR}/../config/config.sh"
+CONFIG="${SCRIPT_DIR}/../config/config.sh"
+
+if [[ ! -f "${CONFIG}" ]]; then
+    cat >&2 <<EOF
+[ERROR] config/config.sh not found.
+
+Setup:
+  cp config/config.example.sh config/config.sh
+  \$EDITOR config/config.sh    # edit paths for your system
+
+See README.md for details.
+EOF
+    exit 1
 fi
-: "${SM:=HG001}"
-: "${REF:=/mnt/vdb/WES_PPMI/benchmark/references/GRCh38_GIAB_noalt_masked.fa}"
-: "${OUTDIR:=/mnt/vdb/WES_PPMI/benchmark/work/${SM}}"
-: "${CAPTURE_BED:=/mnt/vdb/variants_benchmark/AgilentV5_GRCh38.bed}"
-: "${THREADS_SORT:=8}"
-if ! declare -F require_file >/dev/null; then
-    require_file() {
-        [[ -f "$1" ]] || { echo "[ERROR] required file missing: $1" >&2; exit 1; }
+
+# shellcheck disable=SC1090
+source "${CONFIG}"
+
+for v in SM REF FASTQ_DIR OUTDIR THREADS_ALIGN THREADS_SORT; do
+    [[ -n "${!v:-}" ]] || {
+        echo "[ERROR] ${v} not set in ${CONFIG}" >&2
+        exit 1
     }
-fi
+done
 
 # ----------------------------------------------------------------------------
 

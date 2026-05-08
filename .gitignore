@@ -1,94 +1,55 @@
-# Local config — copy from config.example.sh
+# ==============================================================================
+# .gitignore 
+# ==============================================================================
+
+# Local config — copy from config.example.sh, edit, never commit
 config/config.sh
 
-# Pipeline outputs
+# Pipeline working dirs and outputs
 work/
 vcfs/
 happy_out/
-*.bam
-*.bai
-*.vcf.gz
-*.vcf.gz.tbi
+fastq/
 
-# RTG and bwa-mem2 indexes (large)
-*.sdf/
-*.bwt.2bit.64
-*.0123
-*.fai
-*.dict
-
-# Conda
-.conda/
-
-# Editor / OS
-.vscode/
-.idea/
-.DS_Store
-__pycache__/
-*.pyc# ==============================================================================
-# Bioinformatics .gitignore — keep heavy/derived data out of the repo.
-# ==============================================================================
-
-# Sequencing / alignment data
-*.fastq
-*.fastq.gz
-*.fq
-*.fq.gz
+# Large bioinformatics artefacts (generated locally, often huge)
 *.bam
 *.bai
 *.cram
 *.crai
-*.sam
-
-# Variant data
 *.vcf
 *.vcf.gz
 *.vcf.gz.tbi
-*.vcf.gz.csi
-*.gvcf
-*.gvcf.gz
-*.gvcf.gz.tbi
+*.bcf
+*.bcf.csi
 
-# Reference / index files
-*.fa
-*.fasta
-*.fa.fai
-*.fasta.fai
+# Reference indexes (rebuild on each machine)
+*.fai
 *.dict
-*.bwt*
-*.pac
-*.ann
-*.amb
-*.sa
-*.0123
 *.bwt.2bit.64
+*.0123
+*.amb
+*.ann
+*.pac
+*.bwt
+*.sa
 *.sdf/
+*.gzi
 
-# Intermediate / log
-work/
-tmp/
-logs/
-*.log
-*.metrics.txt
-
-# Result artifacts that should be regenerated, not committed
-results/*.tsv
-results/*.png
-results/*.pdf
-!results/README.md
+# Conda / Python
+.conda/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
 
 # Editor / OS
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
-*.swp
 
-# Python
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
-.env
-
-# Conda
-.conda/
+# Logs 
+*.log

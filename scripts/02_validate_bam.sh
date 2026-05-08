@@ -19,8 +19,21 @@
 #   bash scripts/02_validate_bam.sh                       # uses default BAM
 #   bash scripts/02_validate_bam.sh /path/to/sample.bam   # validate a specific file
 #
+# Inputs (resolved from config/config.sh if present, otherwise from defaults
+# at the top of this script):
+#   ${OUTDIR}/${SM}.merged.dedup.bam   the BAM to validate
+#   ${REF}                              reference FASTA (with .fai)
+#   ${CAPTURE_BED}                      capture-target BED (optional)
+#
+# Outputs in ${OUTDIR}/qc/:
+#   ${SM}.validate.report.txt   summary verdict (PASS / WARN / FAIL per check)
+#   ${SM}.validate.full.txt     full Picard ValidateSamFile output
+#   ${SM}.flagstat.txt          samtools flagstat
+#   ${SM}.stats.txt             samtools stats (full)
+#   ${SM}.depth.summary.txt     mean coverage on capture target
+#
 # Exit codes:
-#   0   PASS (possibly with warnings) — BAM is safe to use
+#   0   PASS  — BAM is safe to use
 #   1   FAIL — at least one hard failure; do NOT run callers
 #
 # Conda envs: `variant_benchmark` (samtools) and `picard`
@@ -28,26 +41,37 @@
 set -uo pipefail
 
 # ---- Configuration ---------------------------------------------------------
+# All paths and parameters come from config/config.sh, which is gitignored.
+# To set up:
+#   cp config/config.example.sh config/config.sh
+#   $EDITOR config/config.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "${SCRIPT_DIR}/../config/config.sh" ]]; then
-    source "${SCRIPT_DIR}/../config/config.sh"
-fi
-: "${SM:=HG001}"
-: "${REF:=/mnt/vdb/WES_PPMI/benchmark/references/GRCh38_GIAB_noalt_masked.fa}"
-: "${OUTDIR:=/mnt/vdb/WES_PPMI/benchmark/work/${SM}}"
-: "${CAPTURE_BED:=/mnt/vdb/variants_benchmark/AgilentV5_GRCh38.bed}"
-: "${THREADS_SORT:=8}"
-if ! declare -F require_file >/dev/null; then
-    require_file() {
-        [[ -f "$1" ]] || { echo "[ERROR] required file missing: $1" >&2; exit 1; }
-    }
-fi
-if ! declare -F require_file >/dev/null; then
-    require_file() {
-        [[ -f "$1" ]] || { echo "[ERROR] required file missing: $1" >&2; exit 1; }
-    }
+CONFIG="${SCRIPT_DIR}/../config/config.sh"
+
+if [[ ! -f "${CONFIG}" ]]; then
+    cat >&2 <<EOF
+[ERROR] config/config.sh not found.
+
+Setup:
+  cp config/config.example.sh config/config.sh
+  \$EDITOR config/config.sh    # edit paths for your system
+
+See README.md for details.
+EOF
+    exit 1
 fi
 
+# shellcheck disable=SC1090
+source "${CONFIG}"
+
+for v in SM REF OUTDIR CAPTURE_BED THREADS_SORT; do
+    [[ -n "${!v:-}" ]] || {
+        echo "[ERROR] ${v} not set in ${CONFIG}" >&2
+        exit 1
+    }
+done
+
+# ---- Inputs ----------------------------------------------------------------
 BAM="${1:-${OUTDIR}/${SM}.merged.dedup.bam}"
 [[ -f "${BAM}" ]] || { echo "[ERROR] BAM not found: ${BAM}"; exit 1; }
 require_file "${REF}"
@@ -61,6 +85,7 @@ FLAGSTAT="${QCDIR}/${SM}.flagstat.txt"
 STATS="${QCDIR}/${SM}.stats.txt"
 DEPTH="${QCDIR}/${SM}.depth.summary.txt"
 
+# ---- Pretty status output --------------------------------------------------
 GREEN=$'\033[1;32m'; YELLOW=$'\033[1;33m'; RED=$'\033[1;31m'
 BOLD=$'\033[1m'; OFF=$'\033[0m'
 
@@ -81,6 +106,9 @@ status_fail() { printf "  %sFAIL%s  %s\n"  "${RED}"    "${OFF}" "$*"; echo "FAIL
     echo
 } >> "${REPORT}"
 
+# ============================================================================
+# 1. File integrity
+# ============================================================================
 echo "${BOLD}== 1. File integrity (samtools quickcheck) ==${OFF}"
 if samtools quickcheck "${BAM}"; then
     status_ok "BAM not truncated; EOF block present"
@@ -89,6 +117,9 @@ else
 fi
 echo
 
+# ============================================================================
+# 2. BAM index
+# ============================================================================
 echo "${BOLD}== 2. BAM index ==${OFF}"
 if [[ -f "${BAM}.bai" || -f "${BAM%.bam}.bai" ]]; then
     status_ok ".bai index present"
@@ -99,6 +130,12 @@ else
 fi
 echo
 
+# ============================================================================
+# 3. Sort order
+# ----------------------------------------------------------------------------
+# Many callers (and bcftools indexing) assume coordinate-sorted input and
+# silently produce wrong output otherwise. Confirm @HD declares SO:coordinate.
+# ============================================================================
 echo "${BOLD}== 3. Sort order ==${OFF}"
 hd_line="$(samtools view -H "${BAM}" | grep '^@HD' || true)"
 if [[ -z "${hd_line}" ]]; then
@@ -111,10 +148,18 @@ else
 fi
 echo
 
+# ============================================================================
+# 4. Reference compatibility
+# ----------------------------------------------------------------------------
+# Compare the BAM's @SQ entries (name + length) against the reference .fai.
+# Catches the silent disaster of using a BAM aligned to a different reference
+# (e.g. chr-prefix mismatch, hg19 vs GRCh38, alt-contig differences).
+# ============================================================================
 echo "${BOLD}== 4. Reference compatibility (BAM @SQ vs reference .fai) ==${OFF}"
 if [[ ! -f "${REF}.fai" ]]; then
     status_warn "No ${REF}.fai found; can't cross-check sequence dictionary"
 else
+    # Build sets of "name<TAB>length" from both sources, compare.
     bam_seqs="$(samtools view -H "${BAM}" \
                   | awk '$1=="@SQ"{
                           for(i=2;i<=NF;i++){
@@ -124,9 +169,13 @@ else
                           print sn"\t"ln
                         }' | sort)"
     ref_seqs="$(awk '{print $1"\t"$2}' "${REF}.fai" | sort)"
+
     n_bam=$(echo "${bam_seqs}" | grep -c .)
     n_ref=$(echo "${ref_seqs}" | grep -c .)
+
+    # Contigs in BAM that aren't in the reference (or have different lengths)
     mismatches="$(comm -23 <(echo "${bam_seqs}") <(echo "${ref_seqs}") | head -5)"
+
     if [[ -z "${mismatches}" ]]; then
         status_ok "All ${n_bam} BAM @SQ entries match the reference (${n_ref} total contigs)"
     else
@@ -137,6 +186,13 @@ else
 fi
 echo
 
+# ============================================================================
+# 5. Picard ValidateSamFile
+# ----------------------------------------------------------------------------
+# MODE=SUMMARY prints counts of each ERROR / WARNING type. We ignore two
+# benign categories that are common with bwa-mem2 + Illumina exomes and don't
+# affect downstream callers.
+# ============================================================================
 echo "${BOLD}== 5. Picard ValidateSamFile ==${OFF}"
 if conda run -n picard picard -Xmx16g ValidateSamFile \
         I="${BAM}" R="${REF}" \
@@ -160,12 +216,16 @@ else
 fi
 echo
 
+# ============================================================================
+# 6. Read-group headers
+# ============================================================================
 echo "${BOLD}== 6. Read-group headers ==${OFF}"
 RG_LINES="$(samtools view -H "${BAM}" | grep -c '^@RG' || true)"
 if [[ "${RG_LINES}" -eq 0 ]]; then
     status_fail "No @RG lines in header — variant callers will reject this BAM"
 else
     status_ok "${RG_LINES} @RG line(s) present"
+    # Spot-check that ID/SM/LB/PL/PU are all populated on the first @RG
     first_rg="$(samtools view -H "${BAM}" | grep '^@RG' | head -1)"
     for tag in ID SM LB PL PU; do
         if [[ "${first_rg}" == *$'\t'"${tag}:"* ]]; then
@@ -177,6 +237,9 @@ else
 fi
 echo
 
+# ============================================================================
+# 7. Alignment statistics (flagstat)
+# ============================================================================
 echo "${BOLD}== 7. Alignment statistics (samtools flagstat) ==${OFF}"
 samtools flagstat -@ "${THREADS_SORT}" "${BAM}" > "${FLAGSTAT}"
 cat "${FLAGSTAT}"
@@ -205,6 +268,9 @@ echo
 }
 echo
 
+# ============================================================================
+# 8. Detailed stats
+# ============================================================================
 echo "${BOLD}== 8. Detailed stats (samtools stats) ==${OFF}"
 samtools stats -@ "${THREADS_SORT}" --reference "${REF}" "${BAM}" > "${STATS}"
 err_rate=$(awk '/^SN[[:space:]]+error rate:/         {print $4}' "${STATS}")
@@ -220,16 +286,23 @@ status_ok "Average insert size:  ${ins_size}"
 }
 echo
 
+# ============================================================================
+# 9. Coverage on AgilentV5 capture regions
+# ============================================================================
 echo "${BOLD}== 9. Coverage on AgilentV5 capture regions ==${OFF}"
 if [[ -f "${CAPTURE_BED}" ]]; then
+    # Use -a so zero-coverage bases count toward the mean (otherwise depth is
+    # over-optimistic — gaps in the capture get silently dropped).
     samtools depth -a -b "${CAPTURE_BED}" "${BAM}" \
       | awk 'BEGIN{n=0; s=0; below10=0}
              {n++; s+=$3; if($3<10) below10++}
              END {if(n>0) printf "mean_depth=%.1f\nfraction_below_10x=%.3f\nbases_in_target=%d\n",
                                  s/n, below10/n, n}' > "${DEPTH}"
     cat "${DEPTH}"
+
     mean_depth=$(awk -F= '/mean_depth/{print $2}' "${DEPTH}")
     frac_low=$(  awk -F= '/fraction_below_10x/{print $2}' "${DEPTH}")
+
     [[ -n "${mean_depth}" ]] && {
         awk -v p="${mean_depth}" 'BEGIN{exit !(p>=30)}' \
             && status_ok   "Mean on-target depth: ${mean_depth}x (>= 30x for WES)" \
@@ -244,6 +317,9 @@ else
     status_warn "CAPTURE_BED not set or not found — skipping coverage check"
 fi
 
+# ============================================================================
+# Verdict
+# ============================================================================
 echo
 echo "${BOLD}== Verdict ==${OFF}"
 if [[ "${FAIL_COUNT}" -gt 0 ]]; then

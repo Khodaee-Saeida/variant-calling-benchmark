@@ -71,7 +71,7 @@ Four callers run on the same analysis-ready BAM, restricted to the AgilentV5 cap
 Per-caller `bcftools norm -m -any --check-ref s` (left-align, decompose multi-allelics, fix REF mismatches), then `bcftools view -f PASS,.`, then sample-name + reference-contig + variant-count sanity checks. Builds the evaluable-region BED if not already present. Produces `${SM}.<caller>.pass.vcf.gz` ready to feed hap.py.
 
 **Step 6 — Benchmark** (`10_run_happy_benchmark.sh`)
-`hap.py --engine=vcfeval` per caller against the GIAB v4.2.1 truth set, restricted to the evaluable region. Aggregates the four per-caller `summary.csv` files into a single `all_callers_summary.csv`. The companion `plot_benchmark.py` turns that table into the figure at the top of this README.
+`hap.py --engine=vcfeval` per caller against the GIAB v4.2.1 truth set, restricted to the evaluable region. Aggregates the four per-caller `summary.csv` files into a single `all_callers_summary.csv`. 
 
 ---
 

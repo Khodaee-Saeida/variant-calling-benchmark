@@ -77,7 +77,7 @@ Per-caller `bcftools norm -m -any --check-ref s` (left-align, decompose multi-al
 
 ## Environments
 
-Conda environments isolate tool dependencies that don't co-exist (Python 2 vs 3, JVM versions, etc.):
+Conda environments isolate tool dependencies that don't co-exist (Python 2 vs 3):
 
 | Env name              | Purpose                                              | Python |
 |-----------------------|------------------------------------------------------|--------|

@@ -108,8 +108,6 @@ cp config/config.example.sh config/config.sh
 $EDITOR config/config.sh    # fill in REF, PROJECT_DIR, RAW_AGILENT_BED
 ```
 
-`config/config.sh` is gitignored, so your real paths stay local. Every script reads from it.
-
 ### Run the pipeline
 
 Each script switches to the conda env it needs automatically — no manual `conda activate` between steps.

@@ -141,6 +141,30 @@ bash scripts/10_run_happy_benchmark.sh
 python scripts/plot_benchmark.py results/all_callers_summary.csv docs/
 ```
 
+---
+
+## Extension: HLA Typing (nf-core/hlatyping)
+
+As an extension of this benchmark, I applied [nf-core/hlatyping](https://nf-co.re/hlatyping) (OptiType) to the same NA12878 reference sample, to explore HLA typing as a distinct problem from conventional germline variant calling — the highly polymorphic MHC locus (chr6) introduces reference-bias and resolution challenges that don't apply to the rest of the genome.
+
+**Pipeline:** MHC region subset (`chr6:29,000,000-33,000,000`, GRCh38) → BAM-to-FASTQ conversion → `nf-core/hlatyping` (OptiType) run with Singularity on HPC/de.NBI cloud. Scripts and full documentation are in [`hlatyping/`](hlatyping/).
+
+### Result
+
+| Locus | Predicted (OptiType) | Published (Dilthey et al. 2016) | Match? |
+|---|---|---|---|
+| HLA-A | A\*01:01, A\*11:01 | A\*01, A\*11 | Yes |
+| HLA-B | B\*08:01, B\*56:01 | B\*08, B\*56 | Yes |
+| HLA-C | C\*01:02, C\*07:01 | C\*01, C\*07 | Yes |
+
+All three loci match the published genotype at the resolution available (published at 2-digit; OptiType's 4-digit calls are consistent with, but not independently validated beyond, that resolution). OptiType reported 3,832 supporting reads and an objective score of 3,659.56, with deep, largely mismatch-free per-allele coverage across all six alleles.
+
+**Published reference:** Dilthey AT, Cox C, Iqbal Z, Nelson MR, McVean G (2016). "High-Accuracy HLA Type Inference from Whole-Genome Sequencing Data Using Population Reference Graphs." *PLOS Computational Biology* 12(10): e1005151. https://doi.org/10.1371/journal.pcbi.1005151. NA12878/GM12878 genotype as catalogued by [Cellosaurus](https://www.cellosaurus.org/CVCL_7526) (PMID 27792722).
+
+**A known gotcha worth documenting:** as of writing, running `nf-core/hlatyping` (and several other nf-core pipelines, e.g. sarek) with Nextflow ≥25.10 fails during config parsing — that release's stricter default parser rejects the older-style Groovy `check_max()` function definitions these pipelines' configs still use. Fix: pin `NXF_VER=24.10.5` (or another pre-25.10 release) for the run — see the header comment in [`hlatyping/03_run_hlatyping.sh`](hlatyping/03_run_hlatyping.sh).
+
+---
+
 ## License
 
 MIT
